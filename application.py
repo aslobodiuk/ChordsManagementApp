@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 )
 
 from api_calls import fetch_artists, fetch_songs, fetch_song, create_artist, delete_artist, export_songs_to_pdf, \
-    create_song, update_song, delete_songs
+    create_song, update_song, delete_songs, search_songs
 
 
 class MainWindow(QMainWindow):
@@ -215,6 +215,65 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 
+    def handle_search(self):
+        query = self.search_input.text().strip()
+        if not query:
+            self.search_results_dropdown.hide()
+            return
+
+        try:
+            songs = search_songs(query)
+            self.populate_search_results(songs)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to perform search: {e}")
+            self.search_results_dropdown.hide()
+
+    def populate_search_results(self, songs: list[dict]):
+        self.search_results_dropdown.clear()
+        if not songs:
+            self.search_results_dropdown.hide()
+            return
+
+        for song in songs:
+            title = song.get("title", "Unknown Title")
+            artist_name = song.get("artist", {}).get("name", "Unknown Artist")
+
+            highlights = song.get("highlights", {})
+            highlight_text = ""
+            if highlights.get("title"):
+                highlight_text = highlights.get("title")[0]
+            elif highlights.get('artist'):
+                highlight_text = highlights.get("artist")[0]
+            elif highlights.get('lines'):
+                highlight_text = highlights.get("lines")[0]
+
+            item = QListWidgetItem()
+            item.setData(Qt.UserRole, song["id"])
+            self.search_results_dropdown.addItem(item)
+            widget = SearchResultItem(f"{title} - {artist_name}", highlight_text)
+            self.search_results_dropdown.setItemWidget(item, widget)
+
+            item.setSizeHint(widget.sizeHint())
+
+        self.search_results_dropdown.show()
+
+        # Adjust height based on number of items
+        max_visible_items = 5  # max items to show before scrolling
+        item_count = len(songs)
+        visible_count = min(item_count, max_visible_items)
+
+        # Calculate height needed (itemHeight * visibleCount + frame + scrollbar)
+        item_height = self.search_results_dropdown.sizeHintForRow(0) if self.search_results_dropdown.count() > 0 else 20
+        frame = self.search_results_dropdown.frameWidth() * 2
+        scrollbar_height = self.search_results_dropdown.horizontalScrollBar().sizeHint().height()
+
+        new_height = item_height * visible_count + frame + scrollbar_height
+        self.search_results_dropdown.setFixedHeight(new_height)
+
+    def on_search_result_double_clicked(self, item: QListWidgetItem):
+        self.load_song_into_editor(item)
+        self.search_results_dropdown.hide()
+
     def create_artist_song_screen(self):
         widget = QWidget()
         main_layout = QVBoxLayout(widget)
@@ -223,6 +282,12 @@ class MainWindow(QMainWindow):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search songs...")
         main_layout.addWidget(self.search_input)
+        self.search_input.returnPressed.connect(self.handle_search)
+
+        self.search_results_dropdown = QListWidget()
+        self.search_results_dropdown.hide()  # hidden by default
+        main_layout.addWidget(self.search_results_dropdown)
+        self.search_results_dropdown.itemDoubleClicked.connect(self.on_search_result_double_clicked)
 
         # Content layout
         content_layout = QHBoxLayout()
@@ -337,3 +402,20 @@ class AddArtistDialog(QDialog):
 
     def get_name(self) -> str:
         return self.name_input.text().strip()
+
+class SearchResultItem(QWidget):
+    def __init__(self, title_artist: str, highlight_text: str):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 2, 5, 8)
+        layout.setSpacing(1)
+
+        highlight_text = highlight_text.replace(
+            "<em>", '<em style="color: rgba(179, 87, 87, 0.7); font-style: italic;">'
+        )
+        self.label_main = QLabel(title_artist)
+        self.label_highlight = QLabel(highlight_text)
+        self.label_highlight.setStyleSheet("font-style: italic; color: gray;")
+
+        layout.addWidget(self.label_main)
+        layout.addWidget(self.label_highlight)

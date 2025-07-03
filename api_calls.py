@@ -86,3 +86,10 @@ def delete_songs(song_ids: list[int]):
     )
     if response.status_code != 204:
         raise Exception(response.text)
+
+def search_songs(query: str) -> list[dict]:
+    params = {"search": query, "display": "short"}
+    response = requests.get(f"{API_URL}/songs", params=params)
+    if response.status_code != 200:
+        raise Exception(response.text)
+    return response.json()
