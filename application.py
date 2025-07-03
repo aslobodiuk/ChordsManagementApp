@@ -1,9 +1,8 @@
-import requests
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QMainWindow, QPushButton, QLineEdit,
     QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QListWidgetItem,
-    QStackedWidget, QComboBox, QDialog, QLabel, QMessageBox
+    QStackedWidget, QComboBox, QDialog, QLabel, QMessageBox, QCheckBox
 )
 
 from api_calls import fetch_artists, fetch_songs, fetch_song, create_artist, delete_artist
@@ -46,7 +45,23 @@ class MainWindow(QMainWindow):
         for song in fetch_songs(artist_id):
             item = QListWidgetItem(song["title"])
             item.setData(Qt.UserRole, song["id"])
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Unchecked)
             self.song_list.addItem(item)
+
+    def toggle_all_song_checkboxes(self, state):
+        for i in range(self.song_list.count()):
+            item = self.song_list.item(i)
+            item.setCheckState(Qt.Checked if state == Qt.Checked.value else Qt.Unchecked)
+
+    def get_checked_song_ids(self):
+        ids = []
+        for i in range(self.song_list.count()):
+            item = self.song_list.item(i)
+            if item.checkState() == Qt.Checked:
+                song_id = item.data(Qt.UserRole)
+                ids.append(song_id)
+        return ids
 
     def on_artist_selected(self, item):
         artist_id = item.data(Qt.UserRole)
@@ -84,6 +99,19 @@ class MainWindow(QMainWindow):
         self.load_artists()
         self.load_songs()
 
+    def open_create_song_editor(self):
+        # Clear previous values
+        self.title_input.setText("")
+        self.lyrics_edit.setPlainText("")
+        self.current_editing_song_id = None  # Custom attribute to track mode
+        self.editor_save_mode = "create"
+
+        # Optional: reset artist dropdown to default (first index)
+        self.artist_dropdown.setCurrentIndex(0)
+
+        # Switch to editor screen
+        self.stack.setCurrentWidget(self.editor_screen)
+
     def load_song_into_editor(self, item: QListWidgetItem):
         song_id = item.data(Qt.UserRole)
 
@@ -101,6 +129,7 @@ class MainWindow(QMainWindow):
 
         # Store current song id for save/update
         self.current_editing_song_id = song_id
+        self.editor_save_mode = "edit"
 
         # Switch to editor screen
         self.stack.setCurrentWidget(self.editor_screen)
@@ -140,6 +169,12 @@ class MainWindow(QMainWindow):
 
         # Right block - Song list
         right_layout = QVBoxLayout()
+
+        # Select All checkbox
+        self.select_all_songs_cb = QCheckBox("Select All")
+        self.select_all_songs_cb.stateChanged.connect(self.toggle_all_song_checkboxes)
+        right_layout.addWidget(self.select_all_songs_cb)
+
         self.song_list = QListWidget()
         self.load_songs()
         self.song_list.itemDoubleClicked.connect(self.load_song_into_editor)
@@ -154,6 +189,7 @@ class MainWindow(QMainWindow):
         song_buttons.addWidget(self.add_song_btn)
         song_buttons.addWidget(self.del_song_btn)
         song_buttons.addWidget(self.export_song_btn)
+        self.add_song_btn.clicked.connect(self.open_create_song_editor)
         right_layout.addLayout(song_buttons)
 
         content_layout.addLayout(left_layout, 1)
