@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 )
 
 from api_calls import fetch_artists, fetch_songs, fetch_song, create_artist, delete_artist, export_songs_to_pdf, \
-    create_song, update_song
+    create_song, update_song, delete_songs
 
 
 class MainWindow(QMainWindow):
@@ -160,6 +160,30 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Export Failed", str(e))
 
+    def handle_delete_songs(self):
+        song_ids = self.get_checked_song_ids()
+        if not song_ids:
+            QMessageBox.information(self, "No Selection", "Please select songs to delete.")
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Confirm Deletion",
+            f"Are you sure you want to delete {len(song_ids)} song(s)?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            delete_songs(song_ids)
+            QMessageBox.information(self, "Success", "Songs deleted successfully.")
+            self.load_songs()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to delete songs: {e}")
+
     def handle_save_song(self):
         title = self.title_input.text().strip()
         artist_name = self.artist_dropdown.currentText()
@@ -244,6 +268,7 @@ class MainWindow(QMainWindow):
         song_buttons.addWidget(self.del_song_btn)
         song_buttons.addWidget(self.export_song_btn)
         self.add_song_btn.clicked.connect(self.open_create_song_editor)
+        self.del_song_btn.clicked.connect(self.handle_delete_songs)
         self.export_song_btn.clicked.connect(self.export_selected_songs)
         right_layout.addLayout(song_buttons)
 

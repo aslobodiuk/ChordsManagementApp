@@ -78,3 +78,11 @@ def update_song(song_id: int, title: str, artist_id: int, lyrics: str):
     )
     if response.status_code != 200:
         raise Exception(f"Failed to update song: {response.text}")
+
+def delete_songs(song_ids: list[int]):
+    response = requests.delete(
+        f"{API_URL}/songs",
+        json={"song_ids": song_ids}
+    )
+    if response.status_code != 204:
+        raise Exception(response.text)
