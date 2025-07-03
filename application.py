@@ -2,10 +2,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QMainWindow, QPushButton, QLineEdit,
     QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QListWidgetItem,
-    QStackedWidget, QComboBox, QDialog, QLabel, QMessageBox, QCheckBox
+    QStackedWidget, QComboBox, QDialog, QLabel, QMessageBox, QCheckBox, QFileDialog
 )
 
-from api_calls import fetch_artists, fetch_songs, fetch_song, create_artist, delete_artist
+from api_calls import fetch_artists, fetch_songs, fetch_song, create_artist, delete_artist, export_songs_to_pdf, \
+    create_song, update_song
 
 
 class MainWindow(QMainWindow):
@@ -137,6 +138,59 @@ class MainWindow(QMainWindow):
     def go_back(self):
         self.stack.setCurrentIndex(0)
 
+    def export_selected_songs(self):
+        selected_song_ids = self.get_checked_song_ids()
+
+        if not selected_song_ids:
+            QMessageBox.warning(self, "No Songs Selected", "Please select at least one song to export.")
+            return
+
+        try:
+            response = export_songs_to_pdf(selected_song_ids)
+
+            save_path, _ = QFileDialog.getSaveFileName(
+                self, "Save PDF", "exported_songs.pdf", "PDF files (*.pdf)"
+            )
+
+            if save_path:
+                with open(save_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                QMessageBox.information(self, "Success", "PDF saved successfully.")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Failed", str(e))
+
+    def handle_save_song(self):
+        title = self.title_input.text().strip()
+        artist_name = self.artist_dropdown.currentText()
+        lyrics = self.lyrics_edit.toPlainText().strip()
+
+        if not title or not artist_name or not lyrics:
+            QMessageBox.warning(self, "Validation Error", "All fields must be filled out.")
+            return
+
+        artist_id = self.artist_dropdown.currentData()
+
+        if not artist_id:
+            QMessageBox.critical(self, "Error", "Invalid artist selected.")
+            return
+
+        try:
+            if self.editor_save_mode == "create":
+                create_song(title, artist_id, lyrics)
+                QMessageBox.information(self, "Success", "Song created successfully.")
+            elif self.editor_save_mode == "edit":
+                update_song(self.current_editing_song_id, title, artist_id, lyrics)
+                QMessageBox.information(self, "Success", "Song updated successfully.")
+            else:
+                raise Exception("Unknown editor mode.")
+
+            self.load_songs()  # refresh song list
+            self.stack.setCurrentIndex(0)  # go back to main screen
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
     def create_artist_song_screen(self):
         widget = QWidget()
         main_layout = QVBoxLayout(widget)
@@ -190,6 +244,7 @@ class MainWindow(QMainWindow):
         song_buttons.addWidget(self.del_song_btn)
         song_buttons.addWidget(self.export_song_btn)
         self.add_song_btn.clicked.connect(self.open_create_song_editor)
+        self.export_song_btn.clicked.connect(self.export_selected_songs)
         right_layout.addLayout(song_buttons)
 
         content_layout.addLayout(left_layout, 1)
@@ -227,6 +282,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(button_layout)
 
         self.back_btn.clicked.connect(self.go_back)
+        self.save_song_btn.clicked.connect(self.handle_save_song)
 
         return widget
 

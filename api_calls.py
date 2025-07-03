@@ -52,3 +52,29 @@ def delete_artist(artist_id, artist_name):
             )
     except Exception as e:
         QMessageBox.critical(None, "Error", f"Failed to delete artist: {e}")
+
+def export_songs_to_pdf(song_ids):
+    response = requests.post(
+        f"{API_URL}/songs/to_pdf",
+        json={"song_ids": song_ids},
+        stream=True
+    )
+    if response.status_code != 200:
+        raise Exception(f"Failed to export PDF: {response.text}")
+    return response
+
+def create_song(title: str, artist_id: int, lyrics: str):
+    response = requests.post(
+        f"{API_URL}/songs",
+        json={"title": title, "artist_id": artist_id, "lyrics": lyrics}
+    )
+    if response.status_code != 200:
+        raise Exception(f"Failed to create song: {response.text}")
+
+def update_song(song_id: int, title: str, artist_id: int, lyrics: str):
+    response = requests.put(
+        f"{API_URL}/songs/{song_id}",
+        json={"title": title, "artist_id": artist_id, "lyrics": lyrics}
+    )
+    if response.status_code != 200:
+        raise Exception(f"Failed to update song: {response.text}")
