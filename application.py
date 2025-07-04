@@ -141,8 +141,12 @@ class MainWindow(QMainWindow):
         # Switch to editor screen
         self.stack.setCurrentWidget(self.editor_screen)
 
-    def highlight_chords(self):
+    def highlight_chords(self, selected_pos: int = None):
         text = self.lyrics_edit.toPlainText()
+
+        # Save cursor position if not explicitly set
+        current_pos = self.lyrics_edit.textCursor().position() if selected_pos is None else selected_pos
+
         self.lyrics_edit.clear()
         cursor = self.lyrics_edit.textCursor()
         pattern = re.compile(CHORDS_PATTERN)
@@ -157,7 +161,10 @@ class MainWindow(QMainWindow):
 
             # Insert chord with special format
             chord_format = QTextCharFormat()
-            chord_format.setForeground(QColor("#cc4444"))  # Dull red
+            if selected_pos is not None and start <= selected_pos <= end:
+                chord_format.setForeground(QColor("#FFA500"))  # orange
+            else:
+                chord_format.setForeground(QColor("#aa4444"))  # dull red
             chord_format.setFontWeight(QFont.Bold)
             chord_format.setProperty(QTextFormat.UserProperty, "chord")
 
@@ -167,6 +174,10 @@ class MainWindow(QMainWindow):
         # Insert any remaining normal text at the end
         normal_format = QTextCharFormat()
         cursor.insertText(text[pos:], normal_format)
+
+        new_cursor = self.lyrics_edit.textCursor()
+        new_cursor.setPosition(current_pos)
+        self.lyrics_edit.setTextCursor(new_cursor)
 
     def go_back(self):
         self.stack.setCurrentIndex(0)
@@ -471,13 +482,25 @@ class ChordTextEdit(QTextEdit):
             start, end = match.span()
             if start <= pos <= end:
                 self.chord_selected = True
+                scrollbar = self.verticalScrollBar()
+                scroll_pos = scrollbar.value()
+                self.main_window.highlight_chords(selected_pos=pos)
+                scrollbar.setValue(scroll_pos)
                 return
 
         self.chord_selected = False
+        scrollbar = self.verticalScrollBar()
+        scroll_pos = scrollbar.value()
+        self.main_window.highlight_chords()
+        scrollbar.setValue(scroll_pos)
 
     def keyPressEvent(self, event: QKeyEvent):
         if event.key() in (Qt.Key_Up, Qt.Key_Down):
             self.chord_selected = False
+            scrollbar = self.verticalScrollBar()
+            scroll_pos = scrollbar.value()
+            self.main_window.highlight_chords()
+            scrollbar.setValue(scroll_pos)
             super().keyPressEvent(event)
             return
 
@@ -496,20 +519,22 @@ class ChordTextEdit(QTextEdit):
                 chord = match.group(0)
                 if event.key() == Qt.Key_Left and start > 0:
                     new_text = text[:start - 1] + chord + text[start - 1:start] + text[end:]
+                    new_cursor_pos = start - 1 + len(chord)
                     scrollbar = self.verticalScrollBar()
                     scroll_pos = scrollbar.value()
                     self.setPlainText(new_text)
-                    self.main_window.highlight_chords()
+                    self.main_window.highlight_chords(selected_pos=new_cursor_pos)
                     scrollbar.setValue(scroll_pos)
                     cursor.setPosition(start - 1 + len(chord))
                     self.setTextCursor(cursor)
                     return
                 elif event.key() == Qt.Key_Right and end < len(text):
                     new_text = text[:start] + text[end] + chord + text[end + 1:]
+                    new_cursor_pos = start + 1 + len(chord)
                     scrollbar = self.verticalScrollBar()
                     scroll_pos = scrollbar.value()
                     self.setPlainText(new_text)
-                    self.main_window.highlight_chords()
+                    self.main_window.highlight_chords(selected_pos=new_cursor_pos)
                     scrollbar.setValue(scroll_pos)
                     cursor.setPosition(start + 1 + len(chord))
                     self.setTextCursor(cursor)
