@@ -1,7 +1,9 @@
 import re
 
+import requests
 from PySide6.QtCore import Qt, Signal, QPoint, QObject, QEvent
-from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextFormat, QKeyEvent, QContextMenuEvent, QCursor
+from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextFormat, QKeyEvent, QContextMenuEvent, QCursor, QShortcut, \
+    QKeySequence
 from PySide6.QtWidgets import (
     QWidget, QMainWindow, QPushButton, QLineEdit,
     QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QListWidgetItem,
@@ -9,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from api_calls import fetch_artists, fetch_songs, fetch_song, create_artist, delete_artist, export_songs_to_pdf, \
-    create_song, update_song, delete_songs, search_songs
+    create_song, update_song, delete_songs, search_songs, normalize_lyrics
 
 CHORDS_PATTERN = r"\(([A-G][#b]?(?:m|maj|min|dim|aug|sus|add)?\d*(?:/[A-G][#b]?)?)\)"
 
@@ -318,6 +320,27 @@ class MainWindow(QMainWindow):
         self.load_song_into_editor(item)
         self.search_results_dropdown.hide()
 
+    def handle_normalize(self):
+        text = self.lyrics_edit.toPlainText()
+
+        try:
+            normalized_lyrics = normalize_lyrics(text)
+
+            # Update editor with normalized text
+            self.lyrics_edit.setPlainText(normalized_lyrics)
+
+            cursor = self.lyrics_edit.textCursor()
+
+            default_format = QTextCharFormat()
+            cursor.setCharFormat(default_format)
+
+            self.lyrics_edit.setTextCursor(cursor)
+
+            self.highlight_chords()
+
+        except requests.RequestException as e:
+            QMessageBox.critical(self, "Normalization Failed", f"API call failed:\n{e}")
+
     def create_artist_song_screen(self):
         widget = QWidget()
         main_layout = QVBoxLayout(widget)
@@ -412,12 +435,15 @@ class MainWindow(QMainWindow):
         button_layout.addStretch()  # pushes buttons to right
         self.back_btn = QPushButton("Back")
         self.save_song_btn = QPushButton("Save")
+        self.normalize_btn = QPushButton("Normalize")
         button_layout.addWidget(self.back_btn)
         button_layout.addWidget(self.save_song_btn)
+        button_layout.addWidget(self.normalize_btn)
         layout.addLayout(button_layout)
 
         self.back_btn.clicked.connect(self.go_back)
         self.save_song_btn.clicked.connect(self.handle_save_song)
+        self.normalize_btn.clicked.connect(self.handle_normalize)
 
         return widget
 
@@ -472,6 +498,8 @@ class ChordTextEdit(QTextEdit):
         self.chord_input = None
         self._chord_input_filter = None
         self.main_window = parent
+        font = QFont("Arial", 16)
+        self.setFont(font)
 
     def contextMenuEvent(self, event: QContextMenuEvent):
         if self.chord_input:

@@ -93,3 +93,11 @@ def search_songs(query: str) -> list[dict]:
     if response.status_code != 200:
         raise Exception(response.text)
     return response.json()
+
+def normalize_lyrics(text: str):
+    response = requests.post(
+        f"{API_URL}/songs/normalize",
+        json={"lyrics": text}
+    )
+    response.raise_for_status()
+    return response.json()
