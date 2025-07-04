@@ -2,16 +2,17 @@ import re
 
 import requests
 from PySide6.QtCore import Qt, Signal, QPoint, QObject, QEvent
-from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextFormat, QKeyEvent, QContextMenuEvent, QCursor, QShortcut, \
-    QKeySequence
+from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextFormat, QKeyEvent, QContextMenuEvent, QCursor
 from PySide6.QtWidgets import (
     QWidget, QMainWindow, QPushButton, QLineEdit,
     QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QListWidgetItem,
     QStackedWidget, QComboBox, QDialog, QLabel, QMessageBox, QCheckBox, QFileDialog, QApplication
 )
 
-from api_calls import fetch_artists, fetch_songs, fetch_song, create_artist, delete_artist, export_songs_to_pdf, \
+from api_calls import (
+    fetch_artists, fetch_songs, fetch_song, create_artist, delete_artist, export_songs_to_pdf,
     create_song, update_song, delete_songs, search_songs, normalize_lyrics
+)
 
 CHORDS_PATTERN = r"\(([A-G][#b]?(?:m|maj|min|dim|aug|sus|add)?\d*(?:/[A-G][#b]?)?)\)"
 
@@ -277,7 +278,12 @@ class MainWindow(QMainWindow):
     def populate_search_results(self, songs: list[dict]):
         self.search_results_dropdown.clear()
         if not songs:
-            self.search_results_dropdown.hide()
+            no_result_item = QListWidgetItem("No songs found")
+            no_result_item.setFlags(no_result_item.flags() & ~Qt.ItemIsSelectable)
+            no_result_item.setForeground(Qt.gray)
+            self.search_results_dropdown.addItem(no_result_item)
+            self.search_results_dropdown.setFixedHeight(25)
+            self.search_results_dropdown.show()
             return
 
         for song in songs:
@@ -355,6 +361,8 @@ class MainWindow(QMainWindow):
         self.search_results_dropdown.hide()  # hidden by default
         main_layout.addWidget(self.search_results_dropdown)
         self.search_results_dropdown.itemDoubleClicked.connect(self.on_search_result_double_clicked)
+        self.search_escape_filter = SearchInputEscapeFilter(self.search_input, self.search_results_dropdown)
+        self.search_input.installEventFilter(self.search_escape_filter)
 
         # Content layout
         content_layout = QHBoxLayout()
@@ -720,4 +728,17 @@ class ClickOutsideFilter(QObject):
         if event.type() == QEvent.MouseButtonPress:
             if self.parent_widget and not self.parent_widget.geometry().contains(self.parent_widget.mapFromGlobal(QCursor.pos())):
                 self.close_callback()
+        return False
+
+class SearchInputEscapeFilter(QObject):
+    def __init__(self, search_input, results_dropdown):
+        super().__init__()
+        self.search_input = search_input
+        self.results_dropdown = results_dropdown
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress and event.key() == Qt.Key_Escape:
+            self.search_input.clear()
+            self.results_dropdown.hide()
+            return True  # Event handled
         return False
