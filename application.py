@@ -602,26 +602,64 @@ class ChordTextEdit(QTextEdit):
             start, end = match.span()
             if start <= position <= end:
                 chord = match.group(0)
+
                 if event.key() == Qt.Key_Left and start > 0:
-                    new_text = text[:start - 1] + chord + text[start - 1:start] + text[end:]
-                    new_cursor_pos = start - 1 + len(chord)
+                    insert_pos = start - 1
+
+                    # Check if we're about to insert into another chord
+                    for other in re.finditer(CHORDS_PATTERN, text):
+                        o_start, o_end = other.span()
+                        if o_start <= insert_pos < o_end:
+                            insert_pos = o_start  # jump just before the other chord
+                            break
+
+                    if insert_pos < 0:
+                        return  # Can't move further left
+
+                    new_text = text[:insert_pos] + chord + text[insert_pos:start] + text[end:]
+                    new_cursor_pos = insert_pos + len(chord)
+
                     scrollbar = self.verticalScrollBar()
                     scroll_pos = scrollbar.value()
                     self.setPlainText(new_text)
                     self.main_window.highlight_chords(selected_pos=new_cursor_pos)
                     scrollbar.setValue(scroll_pos)
-                    cursor.setPosition(start - 1 + len(chord))
+                    cursor.setPosition(new_cursor_pos)
                     self.setTextCursor(cursor)
                     return
+
                 elif event.key() == Qt.Key_Right and end < len(text):
-                    new_text = text[:start] + text[end] + chord + text[end + 1:]
-                    new_cursor_pos = start + 1 + len(chord)
+                    insert_pos = end + 1  # try to move 1 char right
+
+                    # Check if we're moving into another chord
+                    for other in re.finditer(CHORDS_PATTERN, text):
+                        o_start, o_end = other.span()
+                        if o_start < insert_pos <= o_end:
+                            insert_pos = o_end  # jump just after the other chord
+                            break
+
+                    if insert_pos > len(text):
+                        return  # Can't move further right
+
+                    # Remove chord from current position
+                    new_text = text[:start] + text[end:]
+
+                    # Adjust insert_pos after removal
+                    adjusted_insert_pos = insert_pos - (end - start)
+
+                    # Insert chord at new position
+                    new_text = new_text[:adjusted_insert_pos] + chord + new_text[adjusted_insert_pos:]
+                    new_cursor_pos = adjusted_insert_pos + len(chord)
+
+                    # Maintain scroll and update
                     scrollbar = self.verticalScrollBar()
                     scroll_pos = scrollbar.value()
                     self.setPlainText(new_text)
                     self.main_window.highlight_chords(selected_pos=new_cursor_pos)
                     scrollbar.setValue(scroll_pos)
-                    cursor.setPosition(start + 1 + len(chord))
+
+                    # Set cursor
+                    cursor.setPosition(new_cursor_pos)
                     self.setTextCursor(cursor)
                     return
 
