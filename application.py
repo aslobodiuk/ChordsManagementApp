@@ -1,4 +1,7 @@
+import re
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextFormat, QKeyEvent
 from PySide6.QtWidgets import (
     QWidget, QMainWindow, QPushButton, QLineEdit,
     QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QListWidgetItem,
@@ -7,6 +10,8 @@ from PySide6.QtWidgets import (
 
 from api_calls import fetch_artists, fetch_songs, fetch_song, create_artist, delete_artist, export_songs_to_pdf, \
     create_song, update_song, delete_songs, search_songs
+
+CHORDS_PATTERN = r"\(([A-G][#b]?(?:m|maj|min|dim|aug|sus|add)?\d*(?:/[A-G][#b]?)?)\)"
 
 
 class MainWindow(QMainWindow):
@@ -121,6 +126,7 @@ class MainWindow(QMainWindow):
         # Fill editor fields
         self.title_input.setText(song["title"])
         self.lyrics_edit.setPlainText(song["lyrics"])
+        self.highlight_chords()
 
         # Set artist dropdown
         artist_name = song["artist"]["name"]
@@ -134,6 +140,33 @@ class MainWindow(QMainWindow):
 
         # Switch to editor screen
         self.stack.setCurrentWidget(self.editor_screen)
+
+    def highlight_chords(self):
+        text = self.lyrics_edit.toPlainText()
+        self.lyrics_edit.clear()
+        cursor = self.lyrics_edit.textCursor()
+        pattern = re.compile(CHORDS_PATTERN)
+
+        pos = 0
+        for match in pattern.finditer(text):
+            start, end = match.span()
+
+            # Insert normal text with default format
+            normal_format = QTextCharFormat()
+            cursor.insertText(text[pos:start], normal_format)
+
+            # Insert chord with special format
+            chord_format = QTextCharFormat()
+            chord_format.setForeground(QColor("#cc4444"))  # Dull red
+            chord_format.setFontWeight(QFont.Bold)
+            chord_format.setProperty(QTextFormat.UserProperty, "chord")
+
+            cursor.insertText(match.group(), chord_format)
+            pos = end
+
+        # Insert any remaining normal text at the end
+        normal_format = QTextCharFormat()
+        cursor.insertText(text[pos:], normal_format)
 
     def go_back(self):
         self.stack.setCurrentIndex(0)
@@ -358,9 +391,10 @@ class MainWindow(QMainWindow):
         for artist in artists:
             self.artist_dropdown.addItem(artist["name"], artist["id"])
 
-        self.lyrics_edit = QTextEdit()
+        self.lyrics_edit = ChordTextEdit(self)
         self.lyrics_edit.setPlaceholderText("Lyrics with chords in brackets...")
         layout.addWidget(self.lyrics_edit)
+        self.lyrics_edit.installEventFilter(self)
 
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
@@ -419,3 +453,67 @@ class SearchResultItem(QWidget):
 
         layout.addWidget(self.label_main)
         layout.addWidget(self.label_highlight)
+
+class ChordTextEdit(QTextEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.chord_selected = False
+        self.main_window = parent
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+
+        cursor = self.cursorForPosition(event.pos())
+        pos = cursor.position()
+        text = self.toPlainText()
+
+        for match in re.finditer(CHORDS_PATTERN, text):
+            start, end = match.span()
+            if start <= pos <= end:
+                self.chord_selected = True
+                return
+
+        self.chord_selected = False
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() in (Qt.Key_Up, Qt.Key_Down):
+            self.chord_selected = False
+            super().keyPressEvent(event)
+            return
+
+        if not self.chord_selected:
+            super().keyPressEvent(event)
+            return
+
+        cursor = self.textCursor()
+        position = cursor.position()
+        text = self.toPlainText()
+
+        # Find all chord spans
+        for match in re.finditer(CHORDS_PATTERN, text):
+            start, end = match.span()
+            if start <= position <= end:
+                chord = match.group(0)
+                if event.key() == Qt.Key_Left and start > 0:
+                    new_text = text[:start - 1] + chord + text[start - 1:start] + text[end:]
+                    scrollbar = self.verticalScrollBar()
+                    scroll_pos = scrollbar.value()
+                    self.setPlainText(new_text)
+                    self.main_window.highlight_chords()
+                    scrollbar.setValue(scroll_pos)
+                    cursor.setPosition(start - 1 + len(chord))
+                    self.setTextCursor(cursor)
+                    return
+                elif event.key() == Qt.Key_Right and end < len(text):
+                    new_text = text[:start] + text[end] + chord + text[end + 1:]
+                    scrollbar = self.verticalScrollBar()
+                    scroll_pos = scrollbar.value()
+                    self.setPlainText(new_text)
+                    self.main_window.highlight_chords()
+                    scrollbar.setValue(scroll_pos)
+                    cursor.setPosition(start + 1 + len(chord))
+                    self.setTextCursor(cursor)
+                    return
+
+        # Default behavior
+        super().keyPressEvent(event)
