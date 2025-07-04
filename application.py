@@ -161,7 +161,7 @@ class MainWindow(QMainWindow):
 
             # Insert chord with special format
             chord_format = QTextCharFormat()
-            if selected_pos is not None and start <= selected_pos <= end:
+            if selected_pos is not None and start < selected_pos <= end:
                 chord_format.setForeground(QColor("#FFA500"))  # orange
             else:
                 chord_format.setForeground(QColor("#aa4444"))  # dull red
