@@ -115,6 +115,11 @@ class MainWindow(QMainWindow):
         self.current_editing_song_id = None  # Custom attribute to track mode
         self.editor_save_mode = "create"
 
+        # Repopulate dropdown
+        self.artist_dropdown.clear()
+        artists = fetch_artists()
+        for artist in artists:
+            self.artist_dropdown.addItem(artist["name"], artist["id"])
         # Optional: reset artist dropdown to default (first index)
         self.artist_dropdown.setCurrentIndex(0)
 
@@ -130,6 +135,12 @@ class MainWindow(QMainWindow):
         self.title_input.setText(song["title"])
         self.lyrics_edit.setPlainText(song["lyrics"])
         self.highlight_chords()
+
+        # Repopulate dropdown
+        artists = fetch_artists()
+        self.artist_dropdown.clear()
+        for artist in artists:
+            self.artist_dropdown.addItem(artist["name"], artist["id"])
 
         # Set artist dropdown
         artist_name = song["artist"]["name"]
