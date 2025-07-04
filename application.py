@@ -1,11 +1,11 @@
 import re
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextFormat, QKeyEvent
+from PySide6.QtCore import Qt, Signal, QPoint, QObject, QEvent
+from PySide6.QtGui import QTextCharFormat, QColor, QFont, QTextFormat, QKeyEvent, QContextMenuEvent, QCursor
 from PySide6.QtWidgets import (
     QWidget, QMainWindow, QPushButton, QLineEdit,
     QVBoxLayout, QHBoxLayout, QListWidget, QTextEdit, QListWidgetItem,
-    QStackedWidget, QComboBox, QDialog, QLabel, QMessageBox, QCheckBox, QFileDialog
+    QStackedWidget, QComboBox, QDialog, QLabel, QMessageBox, QCheckBox, QFileDialog, QApplication
 )
 
 from api_calls import fetch_artists, fetch_songs, fetch_song, create_artist, delete_artist, export_songs_to_pdf, \
@@ -469,7 +469,71 @@ class ChordTextEdit(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.chord_selected = False
+        self.chord_input = None
+        self._chord_input_filter = None
         self.main_window = parent
+
+    def contextMenuEvent(self, event: QContextMenuEvent):
+        if self.chord_input:
+            self.chord_input.deleteLater()
+            self.chord_input = None
+
+        cursor = self.cursorForPosition(event.pos())
+        position = cursor.position()
+        self.setTextCursor(cursor)
+
+        cursor_rect = self.cursorRect(cursor)
+        local_pos = cursor_rect.topLeft() + QPoint(0, cursor_rect.height() + 5)
+
+        self.chord_input = ChordInput(self)
+        self.chord_input.move(local_pos)
+        self.chord_input.resize(100, 25)
+        self.chord_input.show()
+        self.chord_input.setFocus()
+
+        self.chord_input.chordEntered.connect(lambda chord: self.insert_chord(chord, position))
+        self.chord_input.cancelled.connect(self.cancel_chord_input)
+
+        # Install event filter to detect clicks outside
+        self._chord_input_filter = ClickOutsideFilter(self.chord_input, self.cancel_chord_input)
+        QApplication.instance().installEventFilter(self._chord_input_filter)
+
+    def insert_chord(self, chord_text: str, insert_pos: int):
+        if self.chord_input:
+            self.chord_input.deleteLater()
+            self.chord_input = None
+
+        if self._chord_input_filter:
+            QApplication.instance().removeEventFilter(self._chord_input_filter)
+            self._chord_input_filter = None
+
+        if re.fullmatch(CHORDS_PATTERN, f"({chord_text})"):
+            full_text = self.toPlainText()
+            new_text = full_text[:insert_pos] + f"({chord_text})" + full_text[insert_pos:]
+            self.setPlainText(new_text)
+
+            # Set chord as selected for further keyPressEvent control
+            self.chord_selected = True
+
+            if self.main_window:
+                self.main_window.highlight_chords(selected_pos=insert_pos)
+
+            self.setFocus()
+            cursor = self.textCursor()
+            cursor.setPosition(insert_pos + len(chord_text) + 2)
+            self.setTextCursor(cursor)
+            self.ensureCursorVisible()
+        else:
+            QMessageBox.warning(self, "Invalid Chord", f"'{chord_text}' is not a valid chord.")
+
+    def cancel_chord_input(self):
+        if self.chord_input:
+            self.chord_input.deleteLater()
+            self.chord_input = None
+
+        if self._chord_input_filter:
+            QApplication.instance().removeEventFilter(self._chord_input_filter)
+            self._chord_input_filter = None
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -542,3 +606,31 @@ class ChordTextEdit(QTextEdit):
 
         # Default behavior
         super().keyPressEvent(event)
+
+class ChordInput(QLineEdit):
+    chordEntered = Signal(str)
+    cancelled = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setPlaceholderText("Enter chord")
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() in (Qt.Key_Enter, Qt.Key_Return):
+            self.chordEntered.emit(self.text())
+        elif event.key() == Qt.Key_Escape:
+            self.cancelled.emit()
+        else:
+            super().keyPressEvent(event)
+
+class ClickOutsideFilter(QObject):
+    def __init__(self, parent_widget, close_callback):
+        super().__init__()
+        self.parent_widget = parent_widget
+        self.close_callback = close_callback
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress:
+            if self.parent_widget and not self.parent_widget.geometry().contains(self.parent_widget.mapFromGlobal(QCursor.pos())):
+                self.close_callback()
+        return False
