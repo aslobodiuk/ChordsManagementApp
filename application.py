@@ -485,9 +485,30 @@ class ChordTextEdit(QTextEdit):
         cursor_rect = self.cursorRect(cursor)
         local_pos = cursor_rect.topLeft() + QPoint(0, cursor_rect.height() + 5)
 
+        # Create chord input widget first to get its size
         self.chord_input = ChordInput(self)
+        self.chord_input.resize(100, 25)  # Set size before positioning
+
+        # Calculate the widget's bottom-right point if placed at local_pos
+        input_width = self.chord_input.width()
+        input_height = self.chord_input.height()
+
+        parent_rect = self.rect()  # This widget's geometry in local coordinates
+
+        # Adjust local_pos x to prevent overflow right edge
+        if local_pos.x() + input_width > parent_rect.right():
+            local_pos.setX(parent_rect.right() - input_width - 5)  # 5 px padding
+
+        # Adjust local_pos y to prevent overflow bottom edge
+        if local_pos.y() + input_height > parent_rect.bottom():
+            # Place it above the cursor rect if no space below
+            local_pos.setY(cursor_rect.topLeft().y() - input_height - 5)
+
+        # Ensure local_pos coordinates are not negative
+        local_pos.setX(max(local_pos.x(), 0))
+        local_pos.setY(max(local_pos.y(), 0))
+
         self.chord_input.move(local_pos)
-        self.chord_input.resize(100, 25)
         self.chord_input.show()
         self.chord_input.setFocus()
 
